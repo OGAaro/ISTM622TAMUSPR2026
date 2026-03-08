@@ -481,6 +481,11 @@ JOIN Product p ON p.source_id = sl.product_id
 WHERE sl.status = 'pending'
 GROUP BY o.id, p.id;
 
+/*
+
+--commenting out so that pricehistory table is not populated automatically
+--will only be populated by trigger in M2 project
+
 -- ============================================================
 -- LOAD: PRICEHISTORY
 -- ============================================================
@@ -491,6 +496,7 @@ SELECT
     NOW(),
     id
 FROM Product;
+*/
 
 -- ============================================================
 -- TEARDOWN BLOCK: DROP source_id and DROP STAGING TABLES
