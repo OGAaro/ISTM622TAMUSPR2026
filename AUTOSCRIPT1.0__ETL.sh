@@ -648,5 +648,5 @@ touch /root/11-views-sql-written
 
 sudo mariadb --local-infile=1 -u ${USERNAME} -p"${PASSWORD}" < /home/${USERNAME}/views.sql
 
-touch /root/11-views-sql-executed
+touch /root/12-views-sql-executed
 
