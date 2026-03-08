@@ -515,6 +515,10 @@ DROP TABLE IF EXISTS stg_pricehistory;
 
 EOF
 
+cat > /home/${USERNAME}/views.sql <<'EOF'
+
+EOF
+
 # Set ownership so nonprivuser owns the file
 chown "${USERNAME}:${USERNAME}" /home/${USERNAME}/etl.sql
 chmod 640 /home/${USERNAME}/etl.sql
@@ -531,4 +535,118 @@ sudo mariadb --local-infile=1 -u ${USERNAME} -p"${PASSWORD}" < /home/${USERNAME}
 
 touch /root/10-etl-sql-executed
 
+cat > /home/${USERNAME}/views.sql <<'EOF'
+
+USE POS;
+
+-- =========================================
+-- VIEW: v_ProductBuyers
+-- Lists all customers who purchased each product.
+-- LEFT JOIN ensures products with no sales are still included.
+-- =========================================
+CREATE OR REPLACE VIEW v_ProductBuyers AS
+SELECT
+    p.id   AS productID,
+    p.name AS productName,
+    GROUP_CONCAT(
+        DISTINCT CONCAT(c.id, ' ', c.firstName, ' ', c.lastName)
+        ORDER BY c.id
+        SEPARATOR ', '
+    ) AS customers
+FROM Product p
+LEFT JOIN Orderline ol ON p.id = ol.product_id
+LEFT JOIN `Order`   o  ON ol.order_id = o.id
+LEFT JOIN Customer  c  ON o.customer_id = c.id
+GROUP BY p.id, p.name
+ORDER BY p.id;
+
+
+-- =========================================
+-- MATERIALIZED VIEW: mv_ProductBuyers
+-- Simulated via a physical snapshot table.
+-- =========================================
+DROP TABLE IF EXISTS mv_ProductBuyers;
+
+CREATE TABLE mv_ProductBuyers AS
+SELECT * FROM v_ProductBuyers;
+
+CREATE INDEX idx_mv_productID ON mv_ProductBuyers(productID);
+
+-- =========================================
+-- TRIGGERS: Keep mv_ProductBuyers in sync
+-- =========================================
+
+
+
+DELIMITER $$ 
+-- =========================================
+--this 'DELIMTER' command is needed to keep mariadb from 
+--getting confused by the semicolons in the trigger body
+--'BEGIN..END' block previously was 'END;'
+--=========================================
+
+
+-- Fires when a new orderline is inserted
+CREATE TRIGGER trg_after_orderline_insert
+AFTER INSERT ON Orderline
+FOR EACH ROW
+BEGIN
+    UPDATE mv_ProductBuyers
+    SET customers = (
+        SELECT GROUP_CONCAT(
+                   DISTINCT CONCAT(c.id, ' ', c.firstName, ' ', c.lastName)
+                   ORDER BY c.id
+                   SEPARATOR ', '
+               )
+        FROM Orderline ol
+        JOIN POS.Order  o ON ol.order_id  = o.id
+        JOIN Customer c ON o.customer_id = c.id
+        WHERE ol.product_id = NEW.product_id
+    )
+    WHERE productID = NEW.product_id;
+END$$
+
+
+-- Fires when an orderline is deleted
+CREATE TRIGGER trg_after_orderline_delete
+AFTER DELETE ON Orderline
+FOR EACH ROW
+BEGIN
+    UPDATE mv_ProductBuyers
+    SET customers = (
+        SELECT GROUP_CONCAT(
+                   DISTINCT CONCAT(c.id, ' ', c.firstName, ' ', c.lastName)
+                   ORDER BY c.id
+                   SEPARATOR ', '
+               )
+        FROM Orderline ol
+        JOIN `Order`  o ON ol.order_id  = o.id
+        JOIN Customer c ON o.customer_id = c.id
+        WHERE ol.product_id = OLD.product_id
+    )
+    WHERE productID = OLD.product_id;
+END$$
+
+
+-- =========================================
+-- TRIGGER: Log price changes to PriceHistory
+-- =========================================
+
+CREATE TRIGGER trg_after_product_update
+AFTER UPDATE ON Product
+FOR EACH ROW
+BEGIN
+    IF OLD.currentPrice <> NEW.currentPrice THEN
+        INSERT INTO PriceHistory (oldPrice, newPrice, ts, product_id)
+        VALUES (OLD.currentPrice, NEW.currentPrice, NOW(), NEW.id);
+    END IF;
+END$$
+
+EOF
+
+touch /root/11-views-sql-written
+
+sudo mariadb --local-infile=1 -u ${USERNAME} -p"${PASSWORD}" < /home/${USERNAME}/views.sql
+
+touch /root/11-views-sql-executed
 
