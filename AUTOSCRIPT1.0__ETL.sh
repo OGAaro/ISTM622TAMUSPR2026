@@ -515,9 +515,7 @@ DROP TABLE IF EXISTS stg_pricehistory;
 
 EOF
 
-cat > /home/${USERNAME}/views.sql <<'EOF'
 
-EOF
 
 # Set ownership so nonprivuser owns the file
 chown "${USERNAME}:${USERNAME}" /home/${USERNAME}/etl.sql
