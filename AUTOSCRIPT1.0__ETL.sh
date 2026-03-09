@@ -529,7 +529,9 @@ touch /root/9-etl-sql-written
 
 # Execute the ETL SQL file as the MariaDB appuser
 #need to remove database from command below
-sudo mariadb --local-infile=1 -u ${USERNAME} -p"${PASSWORD}" < /home/${USERNAME}/etl.sql
+#sudo mariadb --local-infile=1 -u ${USERNAME} -p"${PASSWORD}" < /home/${USERNAME}/etl.sql
+
+sudo su - ${USERNAME} -c "mariadb --local-infile=1 -u ${USERNAME} -p'${PASSWORD}' < /home/${USERNAME}/etl.sql"
 
 touch /root/10-etl-sql-executed
 
@@ -644,7 +646,13 @@ EOF
 
 touch /root/11-views-sql-written
 
-sudo mariadb --local-infile=1 -u ${USERNAME} -p"${PASSWORD}" < /home/${USERNAME}/views.sql
+# Set ownership so nonprivuser owns the file
+chown "${USERNAME}:${USERNAME}" /home/${USERNAME}/views.sql
+chmod 640 /home/${USERNAME}/views.sql
+
+#sudo mariadb --local-infile=1 -u ${USERNAME} -p"${PASSWORD}" < /home/${USERNAME}/views.sql
+
+sudo su - ${USERNAME} -c "mariadb --local-infile=1 -u ${USERNAME} -p'${PASSWORD}' < /home/${USERNAME}/views.sql"
 
 touch /root/12-views-sql-executed
 
