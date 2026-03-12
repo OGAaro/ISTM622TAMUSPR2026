@@ -570,7 +570,7 @@ DROP TABLE IF EXISTS mv_ProductBuyers;
 CREATE TABLE mv_ProductBuyers AS
 SELECT * FROM v_ProductBuyers;
 
-CREATE INDEX idx_mv_productID ON mv_ProductBuyers(productID);
+CREATE INDEX idx_productID ON mv_ProductBuyers(productID);
 
 -- =========================================
 -- TRIGGERS: Keep mv_ProductBuyers in sync
