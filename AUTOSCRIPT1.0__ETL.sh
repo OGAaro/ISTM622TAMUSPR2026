@@ -3,9 +3,15 @@
 #-----------------------------------------------------------------------------------------------------------------------
 # Amazon EC2 Automated Script                                                                                          -
 #                                                                                                                      -
+# This automated srcipt installs Mariadb, performs an ETL process to load and transform raw data. Includes triggers    -
+# and materialized views.                                                                                              -
+#                                                                                                                      -
+#                                                                                                                      -
+#                                                                                                                      -
 #                                                                                                                      -
 #                                                                                                                      -
 #-----------------------------------------------------------------------------------------------------------------------
+
 exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
 
 ## Must set script to noninteractive to perform an unattended installation
