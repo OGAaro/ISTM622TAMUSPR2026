@@ -662,3 +662,225 @@ sudo su - ${USERNAME} -c "mariadb --local-infile=1 -u ${USERNAME} -p'${PASSWORD}
 
 touch /root/12-views-sql-executed
 
+# -------------------------------------------------------
+# CREATE .JSON files
+# 
+# 
+# -------------------------------------------------------
+
+# Create mysql-files directory to hold .json files
+sudo mkdir /var/lib/mysql-files/
+
+#allows mariadb to write to the directory
+sudo chown mysql:mysql /var/lib/mysql-files/
+sudo chmod 750 /var/lib/mysql-files/
+
+cat > /home/${USERNAME}/xjson.sql <<'EOF'
+
+-- =========================================
+-- build prod.json file
+-- =========================================
+
+USE POS;
+
+SELECT JSON_OBJECT(
+    'ProductID',    p.id,
+    'currentPrice', p.currentPrice,
+    'productName',  p.name,
+    'customers',    COALESCE(
+        (SELECT JSON_ARRAYAGG(
+            JSON_OBJECT(
+                'CustomerID',   c.id,
+                'CustomerName', CONCAT(c.firstName, ' ', c.lastName)
+            )
+        )
+        FROM Orderline ol
+        JOIN `Order` o  ON ol.order_id  = o.id
+        JOIN Customer c ON o.customer_id = c.id
+        WHERE ol.product_id = p.id
+        ),
+        JSON_ARRAY()
+    )
+)
+FROM Product p
+INTO OUTFILE '/var/lib/mysql-files/prod.json';
+
+-- =========================================
+-- build cust.json file
+-- =========================================
+
+-- CTE 1: Build the Items array and order total per order
+WITH order_items AS (
+    SELECT
+        ol.order_id,
+        SUM(ol.quantity * p.currentPrice) AS order_total,
+        JSON_ARRAYAGG(
+            JSON_OBJECT(
+                'ProductID',   p.id,
+                'Quantity',    ol.quantity,
+                'ProductName', p.name
+            )
+        ) AS items
+    FROM Orderline ol
+    JOIN Product p ON ol.product_id = p.id
+    GROUP BY ol.order_id
+),
+
+-- CTE 2: Wrap items into the Orders array per customer
+customer_orders AS (
+    SELECT
+        o.customer_id,
+        JSON_ARRAYAGG(
+            JSON_OBJECT(
+                'OrderTotal',   oi.order_total,
+                'OrderDate',    o.datePlaced,
+                'ShippingDate', o.dateShipped,
+                'Items',        oi.items
+            )
+        ) AS orders
+    FROM `Order` o
+    JOIN order_items oi ON o.id = oi.order_id
+    GROUP BY o.customer_id
+)
+
+-- Final: Build the root Customer object
+SELECT JSON_OBJECT(
+    'customer_name',      CONCAT(c.firstName, ' ', c.lastName),
+    'printed_address_1',  CASE
+                              WHEN c.address2 IS NOT NULL AND c.address2 != ''
+                              THEN CONCAT(c.address1, ' #', c.address2)
+                              ELSE c.address1
+                          END,
+    'printed_address_2',  CONCAT(ct.city, ', ', ct.state, '   ', ct.zip),
+    'orders',             COALESCE(co.orders, JSON_ARRAY())
+)
+FROM Customer c
+LEFT JOIN City ct             ON c.zip = ct.zip
+LEFT JOIN customer_orders co  ON c.id  = co.customer_id
+INTO OUTFILE '/var/lib/mysql-files/cust.json';
+
+
+-- =========================================
+-- create sales.json custom case #1
+-- =========================================
+
+WITH region_product_stats AS (
+    SELECT
+        c.zip,
+        p.id    AS product_id,
+        p.name  AS product_name,
+        SUM(ol.quantity)                AS total_qty,
+        SUM(ol.quantity * p.currentPrice) AS revenue
+    FROM Customer c
+    JOIN `Order` o    ON o.customer_id  = c.id
+    JOIN Orderline ol ON ol.order_id    = o.id
+    JOIN Product p    ON ol.product_id  = p.id
+    GROUP BY c.zip, p.id, p.name
+),
+
+region_products AS (
+    SELECT
+        zip,
+        SUM(total_qty) AS total_units_sold,
+        SUM(revenue)   AS total_revenue,
+        JSON_ARRAYAGG(
+            JSON_OBJECT(
+                'ProductID',    product_id,
+                'ProductName',  product_name,
+                'QuantitySold', total_qty,
+                'Revenue',      revenue
+            )
+        ) AS products
+    FROM region_product_stats
+    GROUP BY zip
+),
+
+region_customers AS (
+    SELECT
+        c.zip,
+        JSON_ARRAYAGG(
+            JSON_OBJECT(
+                'CustomerID',   c.id,
+                'CustomerName', CONCAT(c.firstName, ' ', c.lastName)
+            )
+        ) AS customers
+    FROM Customer c
+    GROUP BY c.zip
+)
+
+SELECT JSON_OBJECT(
+    'city',             ct.city,
+    'state',            ct.state,
+    'zip',              ct.zip,
+    'total_revenue',    COALESCE(rp.total_revenue, 0),
+    'total_units_sold', COALESCE(rp.total_units_sold, 0),
+    'customer_count',   (SELECT COUNT(*) FROM Customer c2 WHERE c2.zip = ct.zip),
+    'products_sold',    COALESCE(rp.products, JSON_ARRAY()),
+    'customers',        COALESCE(rc.customers, JSON_ARRAY())
+)
+FROM City ct
+LEFT JOIN region_products rp  ON ct.zip = rp.zip
+LEFT JOIN region_customers rc ON ct.zip = rc.zip
+INTO OUTFILE '/var/lib/mysql-files/sales.json';
+
+
+-- =========================================
+-- create customer.json custom case #2
+-- =========================================
+
+WITH customer_product_stats AS (
+    SELECT
+        o.customer_id,
+        p.id    AS product_id,
+        p.name  AS product_name,
+        SUM(ol.quantity)                  AS total_qty,
+        SUM(ol.quantity * p.currentPrice) AS total_spent
+    FROM `Order` o
+    JOIN Orderline ol ON ol.order_id   = o.id
+    JOIN Product p    ON ol.product_id = p.id
+    GROUP BY o.customer_id, p.id, p.name
+),
+
+customer_products AS (
+    SELECT
+        customer_id,
+        JSON_ARRAYAGG(
+            JSON_OBJECT(
+                'ProductID',     product_id,
+                'ProductName',   product_name,
+                'TotalQuantity', total_qty,
+                'TotalSpent',    total_spent
+            )
+        ) AS products_purchased
+    FROM customer_product_stats
+    GROUP BY customer_id
+),
+
+customer_spend AS (
+    SELECT
+        o.customer_id,
+        COUNT(DISTINCT o.id)              AS order_count,
+        SUM(ol.quantity * p.currentPrice) AS lifetime_spend
+    FROM `Order` o
+    JOIN Orderline ol ON ol.order_id   = o.id
+    JOIN Product p    ON ol.product_id = p.id
+    GROUP BY o.customer_id
+)
+
+SELECT JSON_OBJECT(
+    'CustomerID',          c.id,
+    'customer_name',       CONCAT(c.firstName, ' ', c.lastName),
+    'email',               c.email,
+    'lifetime_spend',      COALESCE(cs.lifetime_spend, 0),
+    'order_count',         COALESCE(cs.order_count, 0),
+    'avg_order_value',     COALESCE(ROUND(cs.lifetime_spend / cs.order_count, 2), 0),
+    'products_purchased',  COALESCE(cp.products_purchased, JSON_ARRAY())
+)
+FROM Customer c
+LEFT JOIN customer_spend cs    ON c.id = cs.customer_id
+LEFT JOIN customer_products cp ON c.id = cp.customer_id
+INTO OUTFILE '/var/lib/mysql-files/customer.json';
+
+EOF
+
+sudo su - ${USERNAME} -c "mariadb --local-infile=1 -u ${USERNAME} -p'${PASSWORD}' < /home/${USERNAME}/xjson.sql"
