@@ -155,6 +155,7 @@ mariadb -e "CREATE USER IF NOT EXISTS '${USERNAME}'@'localhost' IDENTIFIED BY '$
 mariadb -e "DROP DATABASE IF EXISTS POS;"
 mariadb -e "CREATE DATABASE POS;"
 mariadb -e "GRANT ALL PRIVILEGES ON POS.* TO '${USERNAME}'@'localhost' WITH GRANT OPTION;"
+mariadb -e "GRANT FILE ON *.* TO 'adaniels'@'localhost';"
 mariadb -e "FLUSH PRIVILEGES;"
 
 cat > /home/${USERNAME}/etl.sql <<'EOF'
