@@ -812,7 +812,7 @@ region_customers AS (
 SELECT JSON_OBJECT(
     'city',             ct.city,
     'state',            ct.state,
-    'zip',              ct.zip,
+    'zip',              CAST(ct.zip AS CHAR),
     'total_revenue',    COALESCE(rp.total_revenue, 0),
     'total_units_sold', COALESCE(rp.total_units_sold, 0),
     'customer_count',   (SELECT COUNT(*) FROM Customer c2 WHERE c2.zip = ct.zip),
