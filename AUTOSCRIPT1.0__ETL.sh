@@ -762,7 +762,7 @@ INTO OUTFILE '/var/lib/mysql-files/cust.json';
 
 
 -- =========================================
--- create sales.json custom case #1
+-- create custom1.json custom case #1
 -- =========================================
 
 WITH region_product_stats AS (
@@ -822,11 +822,11 @@ SELECT JSON_OBJECT(
 FROM City ct
 LEFT JOIN region_products rp  ON ct.zip = rp.zip
 LEFT JOIN region_customers rc ON ct.zip = rc.zip
-INTO OUTFILE '/var/lib/mysql-files/sales.json';
+INTO OUTFILE '/var/lib/mysql-files/custom1.json';
 
 
 -- =========================================
--- create customer.json custom case #2
+-- create custom2.json custom case #2
 -- =========================================
 
 WITH customer_product_stats AS (
@@ -880,7 +880,7 @@ SELECT JSON_OBJECT(
 FROM Customer c
 LEFT JOIN customer_spend cs    ON c.id = cs.customer_id
 LEFT JOIN customer_products cp ON c.id = cp.customer_id
-INTO OUTFILE '/var/lib/mysql-files/customer.json';
+INTO OUTFILE '/var/lib/mysql-files/custom2.json';
 
 EOF
 
