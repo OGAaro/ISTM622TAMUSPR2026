@@ -664,7 +664,7 @@ sudo su - ${USERNAME} -c "mariadb --local-infile=1 -u ${USERNAME} -p'${PASSWORD}
 touch /root/12-views-sql-executed
 
 # -------------------------------------------------------
-# CREATE .JSON files
+# M6:CREATE .JSON files
 # 
 # 
 # -------------------------------------------------------
@@ -885,3 +885,63 @@ INTO OUTFILE '/var/lib/mysql-files/custom2.json';
 EOF
 
 sudo su - ${USERNAME} -c "mariadb --local-infile=1 -u ${USERNAME} -p'${PASSWORD}' < /home/${USERNAME}/xjson.sql"
+
+# -------------------------------------------------------
+# M7: INSTALL MONGODB
+# 
+# 
+# -------------------------------------------------------
+
+# Import MongoDB GPG key
+curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | \
+  sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-8.0.gpg
+
+# Add the MongoDB 8.0 repo for Noble
+echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu noble/mongodb-org/8.0 multiverse" | \
+  sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list
+
+# Install
+sudo apt update
+sudo apt install -y mongodb-org
+
+# Start & enable
+sudo systemctl start mongod
+sudo systemctl enable mongod
+
+
+#create sync.sh file to hold commands to sync json files to mongodb using mongoimport utility
+#script
+
+# -------------------------------------------------------
+# Create sync.sh file to hold commands to sync json 
+# files to mongodb using mongoimport utility
+# 
+#
+# Script will drop existing collections and re-import from
+# .json files each time it is run to ensure mongodb is 
+# always in sync with latest data in mariadb
+# -------------------------------------------------------
+
+cat > /home/${USERNAME}/sync.sh <<'EOF'
+
+#!/bin/bash
+
+-- Remove existing JSON files to prevent script from crashing
+rm -f /var/lib/mysql-files/*.json
+
+-- Re-run the SQL file to regenerate the JSON files with the latest data
+mariadb -u root < /home/adaniels/xjson.sql
+
+-- import JSON files into MongoDB using mongoimport utility
+mongoimport --db FurnitureDB --collection Products --file /var/lib/mysql-files/prod.json --drop
+mongoimport --db FurnitureDB --collection Customers --file /var/lib/mysql-files/cust.json --drop
+mongoimport --db FurnitureDB --collection Region --file /var/lib/mysql-files/custom1.json --drop
+mongoimport --db FurnitureDB --collection CusHistory --file /var/lib/mysql-files/custom2.json --drop
+
+EOF
+
+# Set ownership and permissions for sync.sh
+chown "${USERNAME}:${USERNAME}" /home/${USERNAME}/sync.sh
+chmod 750 /home/${USERNAME}/sync.sh
+
+mariadb -u root < /home/${USERNAME}/sync.sh
