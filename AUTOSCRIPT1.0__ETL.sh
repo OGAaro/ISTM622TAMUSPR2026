@@ -923,25 +923,27 @@ sudo systemctl enable mongod
 # -------------------------------------------------------
 
 cat > /home/${USERNAME}/sync.sh <<'EOF'
-
 #!/bin/bash
 
--- Remove existing JSON files to prevent script from crashing
+# Remove existing JSON files to prevent stale data
 rm -f /var/lib/mysql-files/*.json
 
--- Re-run the SQL file to regenerate the JSON files with the latest data
+# Re-run the SQL file to regenerate JSON exports
 mariadb -u root < /home/adaniels/xjson.sql
 
--- import JSON files into MongoDB using mongoimport utility
+# Import JSON files into MongoDB
 mongoimport --db FurnitureDB --collection Products --file /var/lib/mysql-files/prod.json --drop
 mongoimport --db FurnitureDB --collection Customers --file /var/lib/mysql-files/cust.json --drop
 mongoimport --db FurnitureDB --collection Region --file /var/lib/mysql-files/custom1.json --drop
 mongoimport --db FurnitureDB --collection CusHistory --file /var/lib/mysql-files/custom2.json --drop
-
 EOF
+
 
 # Set ownership and permissions for sync.sh
 chown "${USERNAME}:${USERNAME}" /home/${USERNAME}/sync.sh
 chmod 750 /home/${USERNAME}/sync.sh
 
 mariadb -u root < /home/${USERNAME}/sync.sh
+
+# Add a cron job to run sync.sh every hour to keep MongoDB in sync with MariaDB
+(crontab -l 2>/dev/null; echo "*/5 * * * */home/${USERNAME}/sync.sh >> /var/log/sync.log 2>&1") | crontab -
