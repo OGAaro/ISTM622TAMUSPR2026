@@ -945,5 +945,8 @@ chmod 750 /home/${USERNAME}/sync.sh
 
 mariadb -u root < /home/${USERNAME}/sync.sh
 
-# Add a cron job to run sync.sh every hour to keep MongoDB in sync with MariaDB
-(crontab -l 2>/dev/null; echo "*/5 * * * */home/${USERNAME}/sync.sh >> /var/log/sync.log 2>&1") | crontab -
+# ------------------------------------------------------------------------------
+# Add a cron job to run sync.sh every hour to keep MongoDB in sync with MariaDB 
+# writes output to sync.log for monitoring
+# ------------------------------------------------------------------------------
+(crontab -l 2>/dev/null; echo "* * * * * /home/${USERNAME}/sync.sh >> /var/log/sync.log 2>&1") | crontab -
