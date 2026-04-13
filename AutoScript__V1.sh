@@ -1055,7 +1055,7 @@ cat > /home/${USERNAME}/sync.sh <<'EOF'
 rm -f /var/lib/mysql-files/*.json
 
 # Re-run the SQL file to regenerate JSON exports
-mariadb -u root < /home/${USERNAME}/xjson.sql
+mariadb -u root < /home/adaniels/xjson.sql
 
 # Import JSON files into MongoDB
 mongoimport --db FurnitureDB --collection Products --file /var/lib/mysql-files/prod.json --drop
